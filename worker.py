@@ -1,142 +1,151 @@
+import os
 import asyncio
 import re
-import sys
+import aiohttp
 import discord
+from discord.ext import commands
 
-USER_TOKEN = sys.argv[1].strip()
+TOKEN = os.getenv("DISCORD_TOKEN")
 
-# 셀프봇은 Intents 미지정이 가장 안정적입니다.
-client = discord.Client(self_bot=True)
-active_tasks = []
+intents = discord.Intents.default()
+intents.message_content = True
 
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+# 유저별 토큰 및 매크로 태스크 관리
+user_tokens = {}
+user_tasks = {}
 
 def parse_time(time_str: str) -> int:
     match = re.match(r"^(\d+)([sSmMhH])$", time_str)
     if not match:
         return None
     amount, unit = int(match.group(1)), match.group(2).lower()
-    if unit == "s":
-        return amount
-    elif unit == "m":
-        return amount * 60
-    elif unit == "h":
-        return amount * 3600
+    if unit == "s": return amount
+    elif unit == "m": return amount * 60
+    elif unit == "h": return amount * 3600
 
+# REST API 직접 전송 함수 (라이브러리 충돌 완전 차단)
+async def send_discord_message(token, channel_id, content):
+    url = f"https://discord.com/api/v9/channels/{channel_id}/messages"
+    headers = {
+        "Authorization": token,
+        "Content-Type": "application/json"
+    }
+    payload = {"content": content}
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json=payload) as resp:
+            return resp.status
 
-@client.event
-async def on_ready():
-    print(f"✅ 셀프봇 정상 연결됨: {client.user}")
-
-
-@client.event
-async def on_message(message):
-    # 토큰 주인 본인이 쓴 메시지만 감지
-    if message.author.id != client.user.id:
-        return
-
-    content = message.content.strip()
-
-    if content.startswith("$메크로시작"):
-        try:
-            await message.delete()
-        except Exception:
-            pass
-
-        parts = content.split(" ", 3)
-        if len(parts) < 4:
-            notice = await message.channel.send(
-                "❌ 사용법: `$메크로시작 30m 3m 입력할내용`"
-            )
-            await asyncio.sleep(2)
-            try:
-                await notice.delete()
-            except Exception:
-                pass
-            return
-
-        total_str, interval_str, send_text = parts[1], parts[2], parts[3]
-        total_sec = parse_time(total_str)
-        interval_sec = parse_time(interval_str)
-
-        if not total_sec or not interval_sec or interval_sec <= 0:
-            notice = await message.channel.send(
-                "❌ 시간 형식이 올바르지 않습니다."
-            )
-            await asyncio.sleep(2)
-            try:
-                await notice.delete()
-            except Exception:
-                pass
-            return
-
-        task = asyncio.create_task(
-            run_macro(
-                message.channel,
-                total_sec,
-                interval_sec,
-                send_text,
-                total_str,
-                interval_str,
-            )
-        )
-        active_tasks.append(task)
-
-    elif content.startswith("$메크로중지"):
-        try:
-            await message.delete()
-        except Exception:
-            pass
-
-        count = 0
-        for task in list(active_tasks):
-            if not task.done():
-                task.cancel()
-                count += 1
-        active_tasks.clear()
-
-        notice = await message.channel.send(
-            f"🛑 진행 중인 매크로({count}개)를 중지했습니다."
-        )
-        await asyncio.sleep(2)
-        try:
-            await notice.delete()
-        except Exception:
-            pass
-
-
-async def run_macro(
-    channel, total_sec, interval_sec, send_text, total_str, interval_str
-):
-    notice = await channel.send(
-        f"✅ 매크로 시작! (`{total_str}` 동안 `{interval_str}` 간격)"
-    )
-    await asyncio.sleep(2)
-    try:
-        await notice.delete()
-    except Exception:
-        pass
-
+async def macro_loop(user_id, token, channel_id, total_sec, interval_sec, content):
     elapsed = 0
+    await send_discord_message(token, channel_id, f"✅ 매크로 동작 시작! ({total_sec}초 동안 {interval_sec}초 간격)")
     try:
         while elapsed < total_sec:
-            await channel.send(send_text)
+            await send_discord_message(token, channel_id, content)
             await asyncio.sleep(interval_sec)
             elapsed += interval_sec
-
-        done_notice = await channel.send(
-            f"🏁 매크로 종료 (`{total_str}` 경과)"
-        )
-        await asyncio.sleep(2)
-        try:
-            await done_notice.delete()
-        except Exception:
-            pass
+        await send_discord_message(token, channel_id, "🏁 매크로가 완료되었습니다.")
     except asyncio.CancelledError:
-        pass
+        await send_discord_message(token, channel_id, "🛑 매크로가 강제 중지되었습니다.")
+    finally:
+        if user_id in user_tasks:
+            del user_tasks[user_id]
 
+class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
+    user_token = discord.ui.TextInput(
+        label="디스코드 토큰 (Authorization)",
+        placeholder="따옴표 없이 토큰을 입력하세요.",
+        style=discord.TextStyle.paragraph,
+        required=True
+    )
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        user_id = interaction.user.id
+        token_val = self.user_token.value.strip().replace('"', '').replace("'", "")
+
+        user_tokens[user_id] = token_val
+
+        await interaction.followup.send(
+            "✅ **토큰 등록 완료!**\n\n"
+            "이제 실행을 원하는 **채널 ID**를 확인하신 후, 채널에 아래 명령어를 입력하세요:\n"
+            "`!시작 [전체시간] [간격] [내용]`\n"
+            "*(예시: `!시작 10m 1m 안녕하세요`)*",
+            ephemeral=True
+        )
+
+class MacroControlView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="🔑 토큰 등록 및 매크로 시작", style=discord.ButtonStyle.primary, custom_id="start_macro_btn")
+    async def start_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(TokenModal())
+
+    @discord.ui.button(label="🛑 매크로 연결 해제", style=discord.ButtonStyle.danger, custom_id="stop_macro_btn")
+    async def stop_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.defer(ephemeral=True)
+        user_id = interaction.user.id
+        
+        if user_id in user_tasks:
+            user_tasks[user_id].cancel()
+            del user_tasks[user_id]
+        if user_id in user_tokens:
+            del user_tokens[user_id]
+
+        await interaction.followup.send("🛑 **매크로 및 토큰 연결이 완전히 해제되었습니다.**", ephemeral=True)
+
+@bot.event
+async def on_ready():
+    print(f"========================================")
+    print(f"✅ 메인 봇 로그인 성공: {bot.user}")
+    print(f"========================================")
+
+@bot.command(name="패널생성")
+@commands.has_permissions(administrator=True)
+async def create_panel(ctx):
+    try: await ctx.message.delete()
+    except Exception: pass
+
+    embed = discord.Embed(
+        title="🤖 디스코드 매크로 컨트롤 패널",
+        description=(
+            "아래 버튼을 눌러 계정 토큰을 등록하세요.\n\n"
+            "**[ 사용법 ]**\n"
+            "1. **`🔑 토큰 등록 및 매크로 시작`** 클릭 후 토큰 입력\n"
+            "2. 매크로를 돌릴 채널에서 명령어 입력:\n"
+            "   `!시작 [전체시간] [간격] [내용]`\n"
+            "   *(예: `!시작 30m 3m 테스트`)*\n"
+            "3. 중지하려면 패널의 **`🛑 매크로 연결 해제`** 클릭"
+        ),
+        color=discord.Color.blue()
+    )
+    await ctx.send(embed=embed, view=MacroControlView())
+
+@bot.command(name="시작")
+async def start_macro_cmd(ctx, total_str: str, interval_str: str, *, content: str):
+    user_id = ctx.author.id
+    if user_id not in user_tokens:
+        await ctx.send("❌ 먼저 패널에서 **토큰을 등록**해 주세요!", delete_after=3)
+        return
+
+    total_sec = parse_time(total_str)
+    interval_sec = parse_time(interval_str)
+
+    if not total_sec or not interval_sec or interval_sec <= 0:
+        await ctx.send("❌ 시간 형식이 올바르지 않습니다. (예: 10m 1m)", delete_after=3)
+        return
+
+    if user_id in user_tasks:
+        user_tasks[user_id].cancel()
+
+    token = user_tokens[user_id]
+    task = asyncio.create_task(macro_loop(user_id, token, ctx.channel.id, total_sec, interval_sec, content))
+    user_tasks[user_id] = task
+    try: await ctx.message.delete()
+    except Exception: pass
 
 if __name__ == "__main__":
-    try:
-        client.run(USER_TOKEN)
-    except Exception as e:
-        print(f"셀프봇 실행 실패: {e}")
+    if TOKEN:
+        bot.run(TOKEN)
