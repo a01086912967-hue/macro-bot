@@ -5,14 +5,13 @@ import re
 import discord
 from discord.ext import commands
 
+# 환경변수에서 관리자 봇 토큰 불러오기
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
-
-# 유저별 실행 중인 셀프봇 클라이언트 저장
 user_clients = {}
 
 def parse_time(time_str: str) -> int:
@@ -20,14 +19,10 @@ def parse_time(time_str: str) -> int:
     if not match:
         return None
     amount, unit = int(match.group(1)), match.group(2).lower()
-    if unit == "s":
-        return amount
-    elif unit == "m":
-        return amount * 60
-    elif unit == "h":
-        return amount * 3600
+    if unit == "s": return amount
+    elif unit == "m": return amount * 60
+    elif unit == "h": return amount * 3600
 
-# 셀프봇 비동기 실행 루프
 class MacroRunner:
     def __init__(self, token):
         self.token = token
@@ -46,10 +41,8 @@ class MacroRunner:
             content = message.content.strip()
 
             if content.startswith("$메크로시작"):
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
+                try: await message.delete()
+                except Exception: pass
 
                 parts = content.split(" ", 3)
                 if len(parts) < 4:
@@ -74,10 +67,8 @@ class MacroRunner:
                 self.active_tasks.append(task)
 
             elif content.startswith("$메크로중지"):
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
+                try: await message.delete()
+                except Exception: pass
 
                 count = 0
                 for task in list(self.active_tasks):
@@ -115,12 +106,11 @@ class MacroRunner:
         try:
             await self.client.start(self.token)
         except Exception as e:
-            print(f"셀프봇 로그인 failure: {e}")
+            print(f"셀프봇 로그인 실패: {e}")
 
     async def stop(self):
         await self.client.close()
-
-class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
+        class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
     user_token = discord.ui.TextInput(
         label="디스코드 토큰 (Authorization)",
         placeholder="따옴표나 공백 없이 토큰만 입력하세요.",
@@ -134,7 +124,6 @@ class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
         user_id = interaction.user.id
         token_value = self.user_token.value.strip()
 
-        # 기존 가동 중인 동일 유저의 셀프봇 닫기
         if user_id in user_clients:
             await user_clients[user_id].stop()
             del user_clients[user_id]
@@ -145,7 +134,7 @@ class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
 
         await interaction.followup.send(
             "✅ **매크로 연결 완료!**\n"
-            "원하는 DM 또는 타 서버 채널에서 아래 명령어를 작성해 보세요:\n"
+            "원하는 채널이나 DM에서 아래 명령어를 작성해 보세요:\n"
             "`$메크로시작 10m 1m 테스트문구`",
             ephemeral=True
         )
@@ -171,9 +160,7 @@ class MacroControlView(discord.ui.View):
 
 @bot.event
 async def on_ready():
-    print(f"========================================")
     print(f"✅ 메인 관리자 봇 실행 완료: {bot.user}")
-    print(f"========================================")
 
 @bot.command(name="패널생성")
 @commands.has_permissions(administrator=True)
