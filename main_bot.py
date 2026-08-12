@@ -1,42 +1,66 @@
 import os
 import subprocess
-import sys
 import discord
+from discord import app_commands
 from discord.ext import commands
+
+# 봇 실행 환경 설정
+TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
 intents.message_content = True
+
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-user_processes = {}
+# 현재 실행 중인 셀프봇 프로세스를 저장하는 변수 (유저 ID: process)
+running_workers = {}
 
 
-class TokenModal(discord.ui.Modal, title="매크로 등록 및 시작"):
+# 토큰 입력 모달 창
+class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
     user_token = discord.ui.TextInput(
-        label="디스코드 계정 토큰",
-        placeholder="본인 계정의 비밀 토큰을 입력하세요.",
-        style=discord.TextStyle.short,
+        label="디스코드 토큰 (Authorization)",
+        placeholder="따옴표나 공백 없이 토큰만 정확히 입력하세요.",
+        style=discord.TextStyle.paragraph,
         required=True,
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        # 3초 초과 오류(Unknown interaction) 방지를 위한 즉시 응답 처리
+        await interaction.response.defer(ephemeral=True)
+
         user_id = interaction.user.id
-        token_val = self.user_token.value.strip()
+        token_value = self.user_token.value.strip()
 
-        if user_id in user_processes:
-            user_processes[user_id].terminate()
-            del user_processes[user_id]
+        # 기존 실행 중인 매크로가 있다면 종료
+        if user_id in running_workers:
+            proc = running_workers[user_id]
+            if proc.poll() is None:
+                proc.terminate()
+            del running_workers[user_id]
 
-        proc = subprocess.Popen([sys.executable, "worker.py", token_val])
-        user_processes[user_id] = proc
+        # worker.py 프로세스 비동기 실행
+        try:
+            process = subprocess.Popen(
+                ["python3", "worker.py", token_value],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            running_workers[user_id] = process
 
-        await interaction.response.send_message(
-            f"✅ **매크로가 성공적으로 등록 및 실행되었습니다!**\n"
-            f"이제 채팅창에서 `$메크로시작 30m 3m (내용)` 또는 `$메크로중지`를 사용하실 수 있습니다.",
-            ephemeral=True,
-        )
+            await interaction.followup.send(
+                "✅ **매크로가 성공적으로 등록 및 실행되었습니다!**\n"
+                "채팅창에 `$메크로시작 10m 1m 입력할내용` 형식으로 입력해 보세요.",
+                ephemeral=True,
+            )
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ 매크로 실행 중 오류가 발생했습니다: {e}", ephemeral=True
+            )
 
 
+# 패널 버튼 뷰
 class MacroControlView(discord.ui.View):
 
     def __init__(self):
@@ -44,8 +68,8 @@ class MacroControlView(discord.ui.View):
 
     @discord.ui.button(
         label="🔑 토큰 등록 및 매크로 시작",
-        style=discord.ButtonStyle.success,
-        custom_id="btn_start_macro",
+        style=discord.ButtonStyle.primary,
+        custom_id="start_macro_button",
     )
     async def start_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -55,30 +79,35 @@ class MacroControlView(discord.ui.View):
     @discord.ui.button(
         label="🛑 매크로 연결 해제",
         style=discord.ButtonStyle.danger,
-        custom_id="btn_stop_macro",
+        custom_id="stop_macro_button",
     )
     async def stop_button(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
-        user_id = interaction.user.id
+        # 3초 초과 오류 방지를 위해 응답 지연 처리
+        await interaction.response.defer(ephemeral=True)
 
-        if user_id in user_processes:
-            user_processes[user_id].terminate()
-            del user_processes[user_id]
-            await interaction.response.send_message(
-                "🛑 **매크로 연결이 정상적으로 해제되었습니다.**",
-                ephemeral=True,
+        user_id = interaction.user.id
+        if user_id in running_workers:
+            proc = running_workers[user_id]
+            if proc.poll() is None:
+                proc.terminate()
+            del running_workers[user_id]
+
+            await interaction.followup.send(
+                "🛑 **매크로 연결이 완전히 해제되었습니다.**", ephemeral=True
             )
         else:
-            await interaction.response.send_message(
-                "⚠️ 현재 실행 중인 매크로가 없습니다.", ephemeral=True
+            await interaction.followup.send(
+                "⚠️ **현재 실행 중인 매크로가 없습니다.**", ephemeral=True
             )
 
 
 @bot.event
 async def on_ready():
-    print(f"관리자 메인 봇 로그인 성공: {bot.user}")
-    bot.add_view(MacroControlView())
+    print(f"========================================")
+    print(f"✅ 메인 관리자 봇 로그인 성공: {bot.user}")
+    print(f"========================================")
 
 
 @bot.command(name="패널생성")
@@ -90,24 +119,24 @@ async def create_panel(ctx):
         pass
 
     embed = discord.Embed(
-        title="⚡ 자동 매크로 관리 시스템",
+        title="🤖 디스코드 매크로 컨트롤 패널",
         description=(
-            "아래 버튼을 눌러 본인의 계정 토큰을 등록하면 자동 매크로 기능이 활성화됩니다.\n\n"
-            "**[기능 안내]**\n"
-            "• **🔑 토큰 등록 및 매크로 시작**: 계정 토큰을 입력하여 매크로 시스템 작동\n"
-            "• **🛑 매크로 연결 해제**: 현재 연결된 매크로 시스템 중지 및 해제\n\n"
-            "**[사용 명령어 예시]**\n"
-            "`$메크로시작 30m 3m 메시지내용` (30분 동안 3분 간격 메시지 전송)\n"
-            "`$메크로중지` (작업 중인 모든 메시지 중단)"
+            "아래 버튼을 눌러 본인의 계정 토큰을 등록하고 매크로를 시작하세요.\n\n"
+            "**[ 사용법 ]**\n"
+            "1. **`🔑 토큰 등록 및 매크로 시작`** 버튼 클릭 후 토큰 입력\n"
+            "2. 아무 채널이나 DM에서 명령어 입력:\n"
+            "   `$메크로시작 [전체시간] [반복간격] [내용]`\n"
+            "   *(예시: `$메크로시작 30m 3m 안녕하세요`)*\n"
+            "3. 매크로 중지: `$메크로중지` 입력 또는 패널에서 **`🛑 매크로 연결 해제`** 버튼 클릭"
         ),
         color=discord.Color.blue(),
     )
-    embed.set_footer(
-        text="⚠️ 입력하신 토큰은 타인에게 공개되지 않으며 ephemeral 입력창으로 처리됩니다."
-    )
-
-    await ctx.send(embed=embed, view=MacroControlView())
+    view = MacroControlView()
+    await ctx.send(embed=embed, view=view)
 
 
-BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-bot.run(BOT_TOKEN)
+if __name__ == "__main__":
+    if not TOKEN:
+        print("❌ DISCORD_TOKEN 환경변수가 설정되지 않았습니다.")
+    else:
+        bot.run(TOKEN)
