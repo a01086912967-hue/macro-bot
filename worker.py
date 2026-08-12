@@ -4,12 +4,11 @@ import sys
 import discord
 from discord.ext import commands
 
+# 메인 봇으로부터 전달받은 유저 토큰
 USER_TOKEN = sys.argv[1]
 
-# DM 및 모든 서버(타서버) 채널 감지를 위한 Intents 전체 허용
-intents = discord.Intents.all()
-
-bot = commands.Bot(command_prefix="$", intents=intents, self_bot=True)
+# discord.py-self 전용 기본 설정 (Intents 충돌 방지)
+bot = commands.Bot(command_prefix="$", self_bot=True)
 active_tasks = []
 
 
@@ -24,6 +23,13 @@ def parse_time(time_str: str) -> int:
         return amount * 60
     elif unit == "h":
         return amount * 3600
+
+
+@bot.event
+async def on_ready():
+    print(f"==========================================")
+    print(f"셀프봇 접속 성공! 계정: {bot.user}")
+    print(f"==========================================")
 
 
 @bot.command(name="메크로시작")
@@ -121,4 +127,7 @@ async def stop_macro(ctx):
         pass
 
 
-bot.run(USER_TOKEN)
+try:
+    bot.run(USER_TOKEN)
+except Exception as e:
+    print(f"셀프봇 로그인/실행 에러 발생: {e}")
