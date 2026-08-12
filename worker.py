@@ -6,7 +6,11 @@ from discord.ext import commands
 
 USER_TOKEN = sys.argv[1]
 
-bot = commands.Bot(command_prefix="$", self_bot=True)
+# intents 설정 추가 (오류 해결 핵심 부분)
+intents = discord.Intents.default()
+intents.message_content = True
+
+bot = commands.Bot(command_prefix="$", intents=intents, self_bot=True)
 active_tasks = []
 
 
