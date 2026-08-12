@@ -6,9 +6,8 @@ from discord.ext import commands
 
 USER_TOKEN = sys.argv[1]
 
-# intents 설정 추가 (오류 해결 핵심 부분)
-intents = discord.Intents.default()
-intents.message_content = True
+# DM 및 모든 서버(타서버) 채널 감지를 위한 Intents 전체 허용
+intents = discord.Intents.all()
 
 bot = commands.Bot(command_prefix="$", intents=intents, self_bot=True)
 active_tasks = []
