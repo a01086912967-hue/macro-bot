@@ -1,11 +1,6 @@
-import os
-import sys
-import asyncio
-import re
-import discord
+import os, sys, asyncio, re, discord
 from discord.ext import commands
 
-# 환경변수에서 관리자 봇 토큰 불러오기
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 intents = discord.Intents.default()
@@ -16,15 +11,11 @@ user_clients = {}
 
 def parse_time(time_str: str) -> int:
     match = re.match(r"^(\d+)([sSmMhH])$", time_str)
-    if not match:
-        return None
+    if not match: return None
     amount, unit = int(match.group(1)), match.group(2).lower()
-    if unit == "s":
-        return amount
-    elif unit == "m":
-        return amount * 60
-    elif unit == "h":
-        return amount * 3600
+    if unit == "s": return amount
+    elif unit == "m": return amount * 60
+    elif unit == "h": return amount * 3600
 
 class MacroRunner:
     def __init__(self, token):
@@ -38,70 +29,52 @@ class MacroRunner:
     def setup_events(self):
         @self.client.event
         async def on_message(message):
-            if message.author.id != self.client.user.id:
-                return
-
+            if message.author.id != self.client.user.id: return
             content = message.content.strip()
 
             if content.startswith("$메크로시작"):
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-
+                try: await message.delete()
+                except: pass
                 parts = content.split(" ", 3)
                 if len(parts) < 4:
                     notice = await message.channel.send("❌ 사용법: `$메크로시작 30m 3m 입력할내용`")
                     await asyncio.sleep(2)
-                    try:
-                        await notice.delete()
-                    except Exception:
-                        pass
+                    try: await notice.delete()
+                    except: pass
                     return
 
                 total_str, interval_str, send_text = parts[1], parts[2], parts[3]
-                total_sec = parse_time(total_str)
-                interval_sec = parse_time(interval_str)
+                total_sec, interval_sec = parse_time(total_str), parse_time(interval_str)
 
                 if not total_sec or not interval_sec or interval_sec <= 0:
                     notice = await message.channel.send("❌ 시간 형식이 올바르지 않습니다.")
                     await asyncio.sleep(2)
-                    try:
-                        await notice.delete()
-                    except Exception:
-                        pass
+                    try: await notice.delete()
+                    except: pass
                     return
 
                 task = asyncio.create_task(self.run_loop(message.channel, total_sec, interval_sec, send_text, total_str, interval_str))
                 self.active_tasks.append(task)
 
             elif content.startswith("$메크로중지"):
-                try:
-                    await message.delete()
-                except Exception:
-                    pass
-
+                try: await message.delete()
+                except: pass
                 count = 0
                 for task in list(self.active_tasks):
                     if not task.done():
                         task.cancel()
                         count += 1
                 self.active_tasks.clear()
-
                 notice = await message.channel.send(f"🛑 현재 진행 중인 매크로({count}개)를 중지했습니다.")
                 await asyncio.sleep(2)
-                try:
-                    await notice.delete()
-                except Exception:
-                    pass
+                try: await notice.delete()
+                except: pass
 
     async def run_loop(self, channel, total_sec, interval_sec, send_text, total_str, interval_str):
         notice = await channel.send(f"✅ 매크로 시작! (`{total_str}` 동안 `{interval_str}` 간격)")
         await asyncio.sleep(2)
-        try:
-            await notice.delete()
-        except Exception:
-            pass
+        try: await notice.delete()
+        except: pass
 
         elapsed = 0
         try:
@@ -109,25 +82,20 @@ class MacroRunner:
                 await channel.send(send_text)
                 await asyncio.sleep(interval_sec)
                 elapsed += interval_sec
-
             done_notice = await channel.send(f"🏁 매크로 종료 (`{total_str}` 경과)")
             await asyncio.sleep(2)
-            try:
-                await done_notice.delete()
-            except Exception:
-                pass
+            try: await done_notice.delete()
+            except: pass
         except asyncio.CancelledError:
             pass
-            async def start(self):
-        try:
-            await self.client.start(self.token)
-        except Exception as e:
-            print(f"셀프봇 로그인 실패: {e}")
+
+    async def start(self):
+        try: await self.client.start(self.token)
+        except Exception as e: print(f"셀프봇 로그인 실패: {e}")
 
     async def stop(self):
         await self.client.close()
-
-class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
+        class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
     user_token = discord.ui.TextInput(
         label="디스코드 토큰 (Authorization)",
         placeholder="따옴표나 공백 없이 토큰만 입력하세요.",
@@ -137,7 +105,6 @@ class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-
         user_id = interaction.user.id
         token_value = self.user_token.value.strip()
 
@@ -182,10 +149,8 @@ async def on_ready():
 @bot.command(name="패널생성")
 @commands.has_permissions(administrator=True)
 async def create_panel(ctx):
-    try:
-        await ctx.message.delete()
-    except Exception:
-        pass
+    try: await ctx.message.delete()
+    except: pass
 
     embed = discord.Embed(
         title="🤖 디스코드 매크로 컨트롤 패널",
@@ -199,7 +164,6 @@ async def create_panel(ctx):
         ),
         color=discord.Color.blue()
     )
-
     view = MacroControlView()
     await ctx.send(embed=embed, view=view)
 
