@@ -5,8 +5,11 @@ import discord
 
 USER_TOKEN = sys.argv[1].strip()
 
-# 셀프봇 client 설정
-client = discord.Client(self_bot=True)
+# discord.py 최신 규격에 맞게 intents 필수 지정
+intents = discord.Intents.default()
+intents.message_content = True
+
+client = discord.Client(intents=intents, self_bot=True)
 active_tasks = []
 
 def parse_time(time_str: str) -> int:
