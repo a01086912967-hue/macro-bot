@@ -95,13 +95,9 @@ class MacroRunner:
 
     async def stop(self):
         await self.client.close()
-        class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
-    user_token = discord.ui.TextInput(
-        label="디스코드 토큰 (Authorization)",
-        placeholder="따옴표나 공백 없이 토큰만 입력하세요.",
-        style=discord.TextStyle.paragraph,
-        required=True
-    )
+
+class TokenModal(discord.ui.Modal, title="🔑 매크로 토큰 등록"):
+    user_token = discord.ui.TextInput(label="디스코드 토큰", placeholder="토큰만 입력하세요.", style=discord.TextStyle.paragraph, required=True)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -116,12 +112,7 @@ class MacroRunner:
         user_clients[user_id] = runner
         asyncio.create_task(runner.start())
 
-        await interaction.followup.send(
-            "✅ **매크로 연결 완료!**\n"
-            "원하는 채널이나 DM에서 아래 명령어를 작성해 보세요:\n"
-            "`$메크로시작 10m 1m 테스트문구`",
-            ephemeral=True
-        )
+        await interaction.followup.send("✅ **매크로 연결 완료!**\n명령어: `$메크로시작 10m 1m 테스트문구`", ephemeral=True)
 
 class MacroControlView(discord.ui.View):
     def __init__(self):
@@ -154,14 +145,7 @@ async def create_panel(ctx):
 
     embed = discord.Embed(
         title="🤖 디스코드 매크로 컨트롤 패널",
-        description=(
-            "아래 버튼을 눌러 본인의 계정 토큰을 등록하고 매크로를 시작하세요.\n\n"
-            "**[ 사용법 ]**\n"
-            "1. **`🔑 토큰 등록 및 매크로 시작`** 버튼 클릭 후 토큰 입력\n"
-            "2. 아무 채널이나 DM에서 명령어 입력:\n"
-            "   `$메크로시작 30m 3m 내용`\n"
-            "3. 매크로 중지: `$메크로중지` 입력"
-        ),
+        description="아래 버튼을 눌러 본인의 계정 토큰을 등록하고 매크로를 시작하세요.",
         color=discord.Color.blue()
     )
     view = MacroControlView()
