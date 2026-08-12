@@ -5,7 +5,7 @@ import discord
 
 USER_TOKEN = sys.argv[1].strip()
 
-# discord.py 최신 규격에 맞게 intents 필수 지정
+# discord.py 최신 버전 필수 지정
 intents = discord.Intents.default()
 intents.message_content = True
 
@@ -32,18 +32,16 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
-    # 본인이 보낸 메시지가 아니면 무시
     if message.author.id != client.user.id:
         return
 
     content = message.content.strip()
 
-    # $메크로시작 명령어 처리
     if content.startswith("$메크로시작"):
         try:
             await message.delete()
-        except Exception as e:
-            print(f"메시지 삭제 실패: {e}")
+        except Exception:
+            pass
 
         parts = content.split(" ", 3)
         if len(parts) < 4:
@@ -60,7 +58,7 @@ async def on_message(message):
         interval_sec = parse_time(interval_str)
 
         if not total_sec or not interval_sec or interval_sec <= 0:
-            notice = await message.channel.send("❌ 시간 형식이 올바르지 않습니다. (예: 10m, 1h, 30s)")
+            notice = await message.channel.send("❌ 시간 형식이 올바르지 않습니다.")
             await asyncio.sleep(2)
             try:
                 await notice.delete()
@@ -71,12 +69,11 @@ async def on_message(message):
         task = asyncio.create_task(run_macro(message.channel, total_sec, interval_sec, send_text, total_str, interval_str))
         active_tasks.append(task)
 
-    # $메크로중지 명령어 처리
     elif content.startswith("$메크로중지"):
         try:
             await message.delete()
-        except Exception as e:
-            print(f"메시지 삭제 실패: {e}")
+        except Exception:
+            pass
 
         count = 0
         for task in list(active_tasks):
