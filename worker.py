@@ -1,16 +1,14 @@
-import sys
-import re
 import asyncio
+import re
+import sys
 import discord
 
 USER_TOKEN = sys.argv[1].strip()
 
-# discord.py 최신 버전 필수 지정
-intents = discord.Intents.default()
-intents.message_content = True
-
-client = discord.Client(intents=intents, self_bot=True)
+# 셀프봇은 Intents 미지정이 가장 안정적입니다.
+client = discord.Client(self_bot=True)
 active_tasks = []
+
 
 def parse_time(time_str: str) -> int:
     match = re.match(r"^(\d+)([sSmMhH])$", time_str)
@@ -24,14 +22,15 @@ def parse_time(time_str: str) -> int:
     elif unit == "h":
         return amount * 3600
 
+
 @client.event
 async def on_ready():
-    print(f"========================================")
-    print(f"✅ 셀프봇 정상 로그인 완료: {client.user} (ID: {client.user.id})")
-    print(f"========================================")
+    print(f"✅ 셀프봇 정상 연결됨: {client.user}")
+
 
 @client.event
 async def on_message(message):
+    # 토큰 주인 본인이 쓴 메시지만 감지
     if message.author.id != client.user.id:
         return
 
@@ -45,7 +44,9 @@ async def on_message(message):
 
         parts = content.split(" ", 3)
         if len(parts) < 4:
-            notice = await message.channel.send("❌ 사용법: `$메크로시작 30m 3m 입력할내용`")
+            notice = await message.channel.send(
+                "❌ 사용법: `$메크로시작 30m 3m 입력할내용`"
+            )
             await asyncio.sleep(2)
             try:
                 await notice.delete()
@@ -58,7 +59,9 @@ async def on_message(message):
         interval_sec = parse_time(interval_str)
 
         if not total_sec or not interval_sec or interval_sec <= 0:
-            notice = await message.channel.send("❌ 시간 형식이 올바르지 않습니다.")
+            notice = await message.channel.send(
+                "❌ 시간 형식이 올바르지 않습니다."
+            )
             await asyncio.sleep(2)
             try:
                 await notice.delete()
@@ -66,7 +69,16 @@ async def on_message(message):
                 pass
             return
 
-        task = asyncio.create_task(run_macro(message.channel, total_sec, interval_sec, send_text, total_str, interval_str))
+        task = asyncio.create_task(
+            run_macro(
+                message.channel,
+                total_sec,
+                interval_sec,
+                send_text,
+                total_str,
+                interval_str,
+            )
+        )
         active_tasks.append(task)
 
     elif content.startswith("$메크로중지"):
@@ -82,15 +94,22 @@ async def on_message(message):
                 count += 1
         active_tasks.clear()
 
-        notice = await message.channel.send(f"🛑 현재 진행 중인 매크로({count}개)를 중지했습니다.")
+        notice = await message.channel.send(
+            f"🛑 진행 중인 매크로({count}개)를 중지했습니다."
+        )
         await asyncio.sleep(2)
         try:
             await notice.delete()
         except Exception:
             pass
 
-async def run_macro(channel, total_sec, interval_sec, send_text, total_str, interval_str):
-    notice = await channel.send(f"✅ 매크로 시작! (`{total_str}` 동안 `{interval_str}` 간격)")
+
+async def run_macro(
+    channel, total_sec, interval_sec, send_text, total_str, interval_str
+):
+    notice = await channel.send(
+        f"✅ 매크로 시작! (`{total_str}` 동안 `{interval_str}` 간격)"
+    )
     await asyncio.sleep(2)
     try:
         await notice.delete()
@@ -104,7 +123,9 @@ async def run_macro(channel, total_sec, interval_sec, send_text, total_str, inte
             await asyncio.sleep(interval_sec)
             elapsed += interval_sec
 
-        done_notice = await channel.send(f"🏁 매크로 종료 (`{total_str}` 경과)")
+        done_notice = await channel.send(
+            f"🏁 매크로 종료 (`{total_str}` 경과)"
+        )
         await asyncio.sleep(2)
         try:
             await done_notice.delete()
@@ -113,8 +134,9 @@ async def run_macro(channel, total_sec, interval_sec, send_text, total_str, inte
     except asyncio.CancelledError:
         pass
 
+
 if __name__ == "__main__":
     try:
         client.run(USER_TOKEN)
     except Exception as e:
-        print(f"❌ 셀프봇 실행 중 오류 발생: {e}")
+        print(f"셀프봇 실행 실패: {e}")
